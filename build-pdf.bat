@@ -1,56 +1,59 @@
 @echo off
 REM ============================================================
 REM  CCNA Guide — PDF Builder (Windows)
-REM  Requires: pandoc + MiKTeX (or another LaTeX distribution)
-REM  Install pandoc: https://pandoc.org/installing.html
-REM  Install MiKTeX: https://miktex.org/download
+REM  Requires: pandoc + typst (both installed via winget)
+REM  Install pandoc: winget install JohnMacFarlane.Pandoc
+REM  Install typst:  winget install Typst.Typst
 REM ============================================================
+
+setlocal enabledelayedexpansion
+
+set PANDOC=%LOCALAPPDATA%\Pandoc\pandoc.exe
+set TYPST_SEARCH=%LOCALAPPDATA%\Microsoft\WinGet\Packages\Typst.Typst_Microsoft.Winget.Source_8wekyb3d8bbwe
 
 echo Building CCNA Complete Guide PDF...
 
-REM Check if pandoc is installed
-where pandoc >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo ERROR: pandoc not found. Install from https://pandoc.org/installing.html
-    pause
-    exit /b 1
+REM Find typst.exe under WinGet packages
+for /r "%TYPST_SEARCH%" %%f in (typst.exe) do set TYPST=%%f
+
+if not exist "%PANDOC%" (
+    echo ERROR: pandoc not found at %PANDOC%
+    echo Run: winget install JohnMacFarlane.Pandoc
+    pause & exit /b 1
 )
 
-REM Build PDF from all chapters
-pandoc ^
-  README.md ^
-  chapters/01-network-fundamentals.md ^
-  chapters/02-network-access.md ^
-  chapters/03-ip-connectivity.md ^
-  chapters/04-ip-services.md ^
-  chapters/05-security.md ^
-  chapters/06-automation.md ^
-  -o CCNA-Complete-Guide.pdf ^
+if not defined TYPST (
+    echo ERROR: typst not found under WinGet packages.
+    echo Run: winget install Typst.Typst
+    pause & exit /b 1
+)
+
+REM Step 1: Strip per-chapter TOC sections to avoid broken anchor links
+echo Preparing clean source file...
+python -c ^
+  "import re; f=open('CCNA-Complete-Guide.md','r',encoding='utf-8'); c=f.read(); f.close(); c=re.sub(r'## Table of Contents\n(?:.*\n)*?---','---',c); f=open('CCNA-PDF-Ready.md','w',encoding='utf-8'); f.write(c); f.close()"
+
+REM Step 2: Generate PDF
+echo Generating PDF...
+"%PANDOC%" ^
+  CCNA-PDF-Ready.md ^
+  --standalone ^
   --toc ^
   --toc-depth=2 ^
   --number-sections ^
-  -V geometry:margin=1in ^
-  -V fontsize=10pt ^
-  -V documentclass=article ^
-  -V colorlinks=true ^
-  -V linkcolor=blue ^
-  --highlight-style=tango ^
-  --pdf-engine=pdflatex
+  --syntax-highlighting=tango ^
+  --metadata title="CCNA 200-301 Complete Study Guide" ^
+  --pdf-engine="%TYPST%" ^
+  -o CCNA-Complete-Guide.pdf
 
 if %ERRORLEVEL% EQU 0 (
     echo.
     echo SUCCESS! PDF created: CCNA-Complete-Guide.pdf
-    echo.
+    del /q CCNA-PDF-Ready.md
     start "" "CCNA-Complete-Guide.pdf"
 ) else (
     echo.
-    echo ERROR: PDF generation failed.
-    echo Make sure MiKTeX is installed and pandoc can find pdflatex.
-    echo Try running: pandoc --version
-    echo.
-    echo ALTERNATIVE: Install md-to-pdf
-    echo   npm install -g md-to-pdf
-    echo   md-to-pdf CCNA-Complete-Guide.md
+    echo ERROR: PDF generation failed. Check pandoc and typst are installed.
 )
 
 pause
